@@ -18,4 +18,14 @@ docs:
 clean:
 	$(GIT) clean -xdf
 
-# .PHONY: test docs
+VENV_DIR_EXISTS=$(shell [ -e "venv" ] && echo 1 || echo 0)
+init:
+ifeq ($(VENV_DIR_EXISTS), 0)
+	$(info ### Creating virtual environment venv ...)
+	virtualenv -p /usr/bin/python3.4 --no-site-packages venv
+	venv/bin/pip install -e .
+else
+	$(info ### Virtual environment venv already exists)
+endif
+
+.PHONY: test docs
