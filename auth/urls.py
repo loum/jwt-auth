@@ -42,4 +42,6 @@ urlpatterns = [
         include('rest_framework.urls', namespace='rest_framework')),
     url(r'^api-token-auth/',
         'rest_framework_jwt.views.obtain_jwt_token'),
+    url(r'^api-token-verify/',
+        'rest_framework_jwt.views.verify_jwt_token'),
 ]

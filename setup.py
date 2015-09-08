@@ -7,7 +7,7 @@ DEPENDENCIES = [
     'django-dynamic-fixture==1.8.4',
     'django-nose',
     'djangorestframework==3.1.2',
-    'djangorestframework-jwt==1.2.0',
+    'djangorestframework-jwt==1.7.2',
 ]
 
 
