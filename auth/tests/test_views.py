@@ -105,5 +105,38 @@ class TestViews(django.test.TestCase):
         msg = 'URL route to verify token incorrect content'
         self.assertEqual(received, expected, msg)
 
+    def test_protected_url(self):
+        """Call to the protected URL.
+        """
+        # Given a HS256 cryptographically signed JWT
+        kwargs = {
+            'username': 'lupco',
+            'password': 'lupco'
+        }
+        url = '/api-token-auth/'
+        response = self.client.post(url, kwargs)
+        jwt_token_str = response.content.decode('utf-8')
+        jwt_token = json.loads(jwt_token_str)
+
+        # when I GET to the protected URL
+        auth_headers = {
+            'HTTP_AUTHORIZATION':
+                'JWT {}'.format(jwt_token.get('token')),
+        }
+        url = '/protected-url'
+        response = self.client.get(url, data=None, **auth_headers)
+
+        # then I should receive a 200_OK response code
+        received = response.status_code
+        expected = rest_framework.status.HTTP_200_OK
+        msg = 'URL route to protected-url incorrect status code'
+        self.assertEqual(received, expected, msg)
+
+        # and the content should also match
+        received = response.content.decode('utf-8')
+        expected = '{"message":"This is a protected URL"}'
+        msg = 'URL route to protected URL content error'
+        self.assertEqual(received, expected, msg)
+
     def tearDown(self):
         self.client = None

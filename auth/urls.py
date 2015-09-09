@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from rest_framework import routers, serializers, viewsets
 
+from . import views
+
 # Serializers define the API representation.
 class UserSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
@@ -44,4 +46,5 @@ urlpatterns = [
         'rest_framework_jwt.views.obtain_jwt_token'),
     url(r'^api-token-verify/',
         'rest_framework_jwt.views.verify_jwt_token'),
+    url(r'^protected-url', views.protected_url)
 ]
