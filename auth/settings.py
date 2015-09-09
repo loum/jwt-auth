@@ -119,3 +119,6 @@ REST_FRAMEWORK = {
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
     ),
 }
+
+import rest_framework_jwt.settings
+rest_framework_jwt.settings.DEFAULTS['JWT_DECODE_HANDLER'] = 'auth.jwt.utils.jwt_decode_handler'
