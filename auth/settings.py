@@ -9,6 +9,8 @@ https://docs.djangoproject.com/en/1.8/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/1.8/ref/settings/
 """
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.backends import default_backend
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
@@ -119,6 +121,16 @@ REST_FRAMEWORK = {
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
     ),
 }
-
-import rest_framework_jwt.settings
-rest_framework_jwt.settings.DEFAULTS['JWT_DECODE_HANDLER'] = 'auth.jwt.utils.jwt_decode_handler'
+with open(os.path.join('auth', 'tests', 'files',
+                       'telstra_cdci_rsacert.pem')) as _fh:
+    cert_str = _fh.read().strip()
+cert_obj = load_pem_x509_certificate(cert_str.encode('UTF-8'),
+                                     default_backend())
+JWT_AUTH = {
+    'JWT_ENCODE_HANDLER': 'auth.jwt.utils.jwt_encode_handler',
+    'JWT_DECODE_HANDLER': 'auth.jwt.utils.jwt_decode_handler',
+    'JWT_SECRET_KEY': {
+        'SECRET_KEY': SECRET_KEY,
+        'PUBLIC_KEY': cert_obj.public_key()
+    }
+}

@@ -1,6 +1,9 @@
 import django.test
 import json
+import jwt
+import os
 import rest_framework
+import rest_framework_jwt.utils
 
 import auth.tests.fixtures as fixtures
 
@@ -10,7 +13,8 @@ class TestViews(django.test.TestCase):
     def setUpClass(cls):
         super(TestViews, cls).setUpClass()
 
-        fixtures.load_auth_users()
+        cls.__user = fixtures.load_auth_users()
+        cls.__test_file_dir = os.path.join('auth', 'tests', 'files')
 
     def setUp(self):
         self.client = django.test.Client()
@@ -122,6 +126,39 @@ class TestViews(django.test.TestCase):
         auth_headers = {
             'HTTP_AUTHORIZATION':
                 'JWT {}'.format(jwt_token.get('token')),
+        }
+        url = '/protected-url'
+        response = self.client.get(url, data=None, **auth_headers)
+
+        # then I should receive a 200_OK response code
+        received = response.status_code
+        expected = rest_framework.status.HTTP_200_OK
+        msg = 'URL route to protected-url incorrect status code'
+        self.assertEqual(received, expected, msg)
+
+        # and the content should also match
+        received = response.content.decode('utf-8')
+        expected = '{"message":"This is a protected URL"}'
+        msg = 'URL route to protected URL content error'
+        self.assertEqual(received, expected, msg)
+
+    def test_asymmetric_jwt(self):
+        """Asymmetric JWT signing.
+        """
+        # Given an asymmetrically signed JWT
+        payload = rest_framework_jwt.utils.jwt_payload_handler(self.__user)
+        with open(os.path.join(self.__test_file_dir,
+                               'telstra_cdci_rsakey.pem')) as _fh:
+            private_key = _fh.read().strip()
+        encoded = jwt.encode(payload=payload,
+                             key=private_key,
+                             algorithm='RS256')
+        jwt_token_str = encoded.decode('utf-8')
+
+        # when I GET to the protected URL
+        auth_headers = {
+            'HTTP_AUTHORIZATION':
+                'JWT {}'.format(jwt_token_str),
         }
         url = '/protected-url'
         response = self.client.get(url, data=None, **auth_headers)

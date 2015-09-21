@@ -20,13 +20,30 @@ class TestUtils(django.test.TestCase):
         payload = utils.jwt_payload_handler(self.__model_user)
 
         # when I embed in a JWT
-        token = utils.jwt_encode_handler(payload)
+        token = auth.jwt.utils.jwt_encode_handler(payload)
 
         # then the JWT should decode successfully
         received = auth.jwt.utils.jwt_decode_handler(token)
         expected = payload
         msg = 'SECRET KEY signed JWT did not decode correctly'
         self.assertEqual(received, expected, msg)
+
+    def test_jwt_decode_incorrectly_signed_payload(self):
+        """Decode a JWT token: incorrectly signed payload.
+        """
+        # Given a payload
+        payload = utils.jwt_payload_handler(self.__model_user)
+
+        # when I embed in a JWT with a different SECRET KEY
+        old_secret = api_settings.JWT_SECRET_KEY
+        api_settings.JWT_SECRET_KEY = 'banana'
+        token = auth.jwt.utils.jwt_encode_handler(payload)
+        api_settings.JWT_SECRET_KEY = old_secret
+
+        # then the JWT should not decode
+        received = auth.jwt.utils.jwt_decode_handler(token)
+        msg = 'Failed JWT decode should return None'
+        self.assertIsNone(received, msg)
 
     def test_jwt_decode_verify_exp(self):
         """Decode a JWT token; SECRET KEY and expiry.
@@ -39,7 +56,7 @@ class TestUtils(django.test.TestCase):
         payload['exp'] = 1
 
         # when I embed the payload into a JWT
-        token = utils.jwt_encode_handler(payload)
+        token = auth.jwt.utils.jwt_encode_handler(payload)
 
         # then the JWT should decode successfully
         received = auth.jwt.utils.jwt_decode_handler(token)
