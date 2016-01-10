@@ -9,9 +9,6 @@ def jwt_decode_handler(token):
     <https://github.com/GetBlimp/django-rest-framework-jwt/issues/136>`_
     for more information.
 
-    CDCi will also like to extend this further to support both
-    SECRET_KEY and asymmetrical (public/private key) algorithms.
-
     """
     options = {
         'verify_exp': api_settings.JWT_VERIFY_EXPIRATION,

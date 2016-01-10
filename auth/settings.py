@@ -121,11 +121,15 @@ REST_FRAMEWORK = {
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
     ),
 }
-with open(os.path.join('auth', 'tests', 'files',
-                       'telstra_cdci_rsacert.pem')) as _fh:
+with open(os.path.join('auth', 'tests', 'files', 'rsacert.pem')) as _fh:
     cert_str = _fh.read().strip()
 cert_obj = load_pem_x509_certificate(cert_str.encode('UTF-8'),
                                      default_backend())
+
+PRIVATE_KEY = None
+with open(os.path.join('auth', 'tests', 'files', 'rsakey.pem')) as _fh:
+    PRIVATE_KEY = _fh.read().strip()
+
 JWT_AUTH = {
     'JWT_ENCODE_HANDLER': 'auth.jwt.utils.jwt_encode_handler',
     'JWT_DECODE_HANDLER': 'auth.jwt.utils.jwt_decode_handler',
@@ -133,4 +137,12 @@ JWT_AUTH = {
         'SECRET_KEY': SECRET_KEY,
         'PUBLIC_KEY': cert_obj.public_key()
     }
+}
+
+AZURE_AD = {
+    'CLIENT_ID': None,
+    'CLIENT_SECRET': None,
+    'TOKEN_URL': None,
+    'RESOURCE_URI': 'https://graph.windows.net',
+    'FEDERATION_METADATA': None
 }

@@ -9,6 +9,7 @@ DEPENDENCIES = [
     'django-nose',
     'djangorestframework==3.2.3',
     'djangorestframework-jwt==1.7.2',
+    'requests_oauthlib==0.5.0',
 ]
 
 

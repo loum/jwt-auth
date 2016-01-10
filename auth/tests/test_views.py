@@ -147,8 +147,7 @@ class TestViews(django.test.TestCase):
         """
         # Given an asymmetrically signed JWT
         payload = rest_framework_jwt.utils.jwt_payload_handler(self.__user)
-        with open(os.path.join(self.__test_file_dir,
-                               'telstra_cdci_rsakey.pem')) as _fh:
+        with open(os.path.join(self.__test_file_dir, 'rsakey.pem')) as _fh:
             private_key = _fh.read().strip()
         encoded = jwt.encode(payload=payload,
                              key=private_key,
