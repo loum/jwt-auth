@@ -182,20 +182,19 @@ class TestUtils(django.test.TestCase):
     def test_get_federation_metadata_certs(self):
         """Get an Azure AD Federation Metadata data
         """
-        # Given an Azure AD Federation Metadata URI
-        uri = 'https://login.microsoftonline.com/federationmetadata.xml'
-
-        # when I source the Federation Metadata certs
+        # Given an Azure AD Federation Metadata document
         fed_meta_filename = os.path.join('auth',
                                          'tests',
                                          'files',
                                          'federation_metadata.raw')
         with open(fed_meta_filename, 'rb') as _fh:
             fed_meta = _fh.read().decode('utf-8')
+
+        # when I source the Federation Metadata certs
         certs = auth.jwt.utils.get_federation_metadata_certs(fed_meta)
         received = [isinstance(x, rsa._RSAPublicKey) for x in certs]
 
         # I should receive a list with 2 _RSAPublicKey elements
         expected = [True, True]
         msg = 'Azure certs not of form _RSAPublicKey'
-        self.assertListEqual(received, [True, True], msg)
+        self.assertListEqual(received, expected, msg)
