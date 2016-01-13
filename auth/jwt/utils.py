@@ -1,5 +1,14 @@
+import re
+import sys
 import jwt
+import xml.etree.ElementTree
+from importlib import import_module
 from rest_framework_jwt.settings import api_settings
+from cryptography.x509 import load_pem_x509_certificate
+from cryptography.hazmat.backends import default_backend
+import urllib.request
+
+import auth.settings
 
 
 def jwt_decode_handler(token):
@@ -25,25 +34,52 @@ def jwt_decode_handler(token):
     }
 
     if isinstance(api_settings.JWT_SECRET_KEY, dict):
-        keys = [
-            api_settings.JWT_SECRET_KEY['SECRET_KEY'],
-            api_settings.JWT_SECRET_KEY['PUBLIC_KEY']
-        ]
+        keys = [api_settings.JWT_SECRET_KEY['SECRET_KEY']]
+
+        public_keys = []
+        public_key_source = api_settings.JWT_SECRET_KEY.get('PUBLIC_KEY')
+        if public_key_source is not None:
+            public_key_source_parts = public_key_source.rsplit('.', 1)
+            if globals().get(public_key_source_parts[1]):
+                public_keys = getattr(sys.modules[__name__],
+                                      public_key_source_parts[1])
+            else:
+                public_keys = getattr(import_module(public_key_source_parts[0]),
+                                      public_key_source_parts[1])
+            cert_kwargs = {
+                'file_certs': auth.settings.CERT_FILES,
+                'federation_meta_uri':
+                    auth.settings.AZURE_AD['FEDERATION_METADATA'],
+            }
+            keys.extend(public_keys(**cert_kwargs))
     else:
         keys = [api_settings.JWT_SECRET_KEY]
 
-    try:
-        for key in keys:
-            kwargs['key'] = key
-            try:
-                decoded = jwt.decode(token, **kwargs)
-            except ValueError:
-                continue
-            break
-    except jwt.exceptions.DecodeError:
-        decoded = None
+        # Note: order is important here as our symmetric signed JWTs
+        # do not have a "aud" claim.
+    decoded = None
+    secret_token_check = True
+    old_aud = api_settings.JWT_AUDIENCE
+    for key in keys:
+        if secret_token_check:
+            secret_token_check = False
+            kwargs['audience'] = None
+        kwargs['key'] = key
+        try:
+            decoded = jwt.decode(token, **kwargs)
+        except (ValueError,
+                TypeError,
+                jwt.exceptions.DecodeError,
+                jwt.exceptions.MissingRequiredClaimError) as err:
+            kwargs['audience'] = old_aud
+            continue
+        break
+
+    if decoded == None:
+        raise jwt.exceptions.DecodeError('Signature verification failed')
 
     return decoded
+
 
 def jwt_encode_handler(payload):
     key = None
@@ -56,3 +92,98 @@ def jwt_encode_handler(payload):
         key,
         api_settings.JWT_ALGORITHM
     ).decode('utf-8')
+
+
+def source_certs(file_certs=None, federation_meta_uri=None):
+    """Get all certificates associated with asymmetrical JWT verification.
+
+    Certs can come from two locations:
+    - local file system (self-signed certificates)
+    - URI based (Azure Federation Metadata)
+
+    """
+    certs = []
+
+    if file_certs is None:
+        file_certs = []
+
+    for file_cert in file_certs:
+        with open(file_cert) as _fh:
+            cert_str = _fh.read().strip()
+        cert_obj = load_pem_x509_certificate(cert_str.encode('UTF-8'),
+                                             default_backend())
+
+        if cert_obj is not None:
+            certs.append(cert_obj.public_key())
+
+    if federation_meta_uri is not None:
+        azure_certs = []
+        data = get_federation_metadata(federation_meta_uri)
+        if data is not None:
+            azure_certs = get_federation_metadata_certs(data)
+            if len(azure_certs):
+                certs.extend(azure_certs)
+
+    return certs
+
+
+def jwt_get_username_from_payload_handler(payload):
+    """Override :func:`rest_framework_jwt.utils` function as username
+    for Azure AD is formatted differently in payload ("appid")
+
+    """
+    username = None
+    if payload.get('username') is not None:
+        username = payload.get('username')
+    else:
+        username = payload.get('appid')[:30]
+
+    return username
+
+
+def get_federation_metadata(uri):
+    """Obtain Azure AD Federation Metadata from URI.
+
+    """
+    data = None
+
+    response = urllib.request.urlopen(uri)
+    if response.status == 200:
+        data = response.read()
+
+    return data
+
+
+def get_federation_metadata_certs(data):
+    """Extract the Federation Metadata certs and return as list.
+
+    """
+    root = xml.etree.ElementTree.fromstring(data)
+    match = ('./metadata:RoleDescriptor/'
+             'metadata:KeyDescriptor/'
+             'dig_sig:KeyInfo/'
+             'dig_sig:X509Data/'
+             'dig_sig:X509Certificate')
+    ns = {
+        'metadata': 'urn:oasis:names:tc:SAML:2.0:metadata',
+        'dig_sig': 'http://www.w3.org/2000/09/xmldsig#',
+    }
+    cert_elements = root.findall(match, ns)
+    cert_strings = [construct_cert(x) for x in cert_elements]
+
+    certs = []
+    for cert_str in cert_strings:
+        cert_obj = load_pem_x509_certificate(cert_str.encode('UTF-8'),
+                                             default_backend())
+        certs.append(cert_obj.public_key())
+
+    return certs
+
+
+def construct_cert(x):
+    begin_token = '-----BEGIN CERTIFICATE-----'
+    end_token = '-----END CERTIFICATE-----'
+
+    cert_text = re.sub('(.{64})', '\\1\n', x.text, 0, re.DOTALL)
+
+    return '{}\n{}\n{}'.format(begin_token, cert_text, end_token)

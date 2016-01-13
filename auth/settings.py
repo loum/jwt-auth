@@ -9,8 +9,6 @@ https://docs.djangoproject.com/en/1.8/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/1.8/ref/settings/
 """
-from cryptography.x509 import load_pem_x509_certificate
-from cryptography.hazmat.backends import default_backend
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
@@ -121,10 +119,6 @@ REST_FRAMEWORK = {
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
     ),
 }
-with open(os.path.join('auth', 'tests', 'files', 'rsacert.pem')) as _fh:
-    cert_str = _fh.read().strip()
-cert_obj = load_pem_x509_certificate(cert_str.encode('UTF-8'),
-                                     default_backend())
 
 PRIVATE_KEY = None
 with open(os.path.join('auth', 'tests', 'files', 'rsakey.pem')) as _fh:
@@ -135,14 +129,21 @@ JWT_AUTH = {
     'JWT_DECODE_HANDLER': 'auth.jwt.utils.jwt_decode_handler',
     'JWT_SECRET_KEY': {
         'SECRET_KEY': SECRET_KEY,
-        'PUBLIC_KEY': cert_obj.public_key()
-    }
+        'PUBLIC_KEY': 'auth.jwt.utils.source_certs',
+    },
+    'JWT_AUDIENCE': None,
+    'JWT_PAYLOAD_GET_USERNAME_HANDLER':
+        'auth.jwt.utils.jwt_get_username_from_payload_handler',
 }
+
+CERT_FILES = [
+    os.path.join('auth', 'tests', 'files', 'rsacert.pem'),
+]
 
 AZURE_AD = {
     'CLIENT_ID': None,
     'CLIENT_SECRET': None,
     'TOKEN_URL': None,
     'RESOURCE_URI': 'https://graph.windows.net',
-    'FEDERATION_METADATA': None
+    'FEDERATION_METADATA': None,
 }
