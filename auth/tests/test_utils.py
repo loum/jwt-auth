@@ -5,6 +5,7 @@ from rest_framework_jwt import utils
 from rest_framework_jwt.settings import api_settings
 import jwt.exceptions
 import cryptography.hazmat.backends.openssl.rsa as rsa
+import datetime
 
 import auth.jwt.utils
 import auth.tests.fixtures as fixtures
@@ -64,6 +65,43 @@ class TestUtils(django.test.TestCase):
         # Clean up.
         api_settings.JWT_SECRET_KEY['PUBLIC_KEY'] = old_public_keys
         api_settings.JWT_VERIFY_EXPIRATION = old_verify
+
+    def test_jwt_decode_asymmetric_refersh_cache(self):
+        """Decode a JWT token: certificate based and refresh cache.
+        """
+        # Given a payload
+        payload = utils.jwt_payload_handler(self.__model_user)
+
+        # when I embed in a JWT
+        old_secret_key = api_settings.JWT_SECRET_KEY.get('SECRET_KEY')
+        old_jwt_algorithm = api_settings.JWT_ALGORITHM
+        api_settings.JWT_ALGORITHM = 'RS256'
+        with open(os.path.join('auth',
+                               'tests',
+                               'files',
+                               'rsakey.pem')) as _fh:
+            api_settings.JWT_SECRET_KEY['SECRET_KEY'] = _fh.read().strip()
+        token = auth.jwt.utils.jwt_encode_handler(payload)
+        api_settings.JWT_SECRET_KEY['SECRET_KEY'] = old_secret_key
+        api_settings.JWT_ALGORITHM = old_jwt_algorithm
+
+        # then the JWT should decode successfully
+        old_public_keys = api_settings.JWT_SECRET_KEY.get('PUBLIC_KEY')
+        old_verify = api_settings.JWT_VERIFY_EXPIRATION
+        old_key_cache = auth.settings.KEY_CACHE
+        api_settings.JWT_VERIFY_EXPIRATION = False
+        api_settings.JWT_SECRET_KEY['PUBLIC_KEY'] = 'auth.jwt.utils.source_certs'
+        auth.settings.KEY_CACHE['last_update'] = datetime.datetime(1970, 1, 1)
+        auth.settings.KEY_CACHE['expiry_seconds'] = 1
+        received = auth.jwt.utils.jwt_decode_handler(token)
+        expected = payload
+        msg = 'Asymmetric signed JWT did not decode correctly'
+        self.assertEqual(received, expected, msg)
+
+        # Clean up.
+        api_settings.JWT_SECRET_KEY['PUBLIC_KEY'] = old_public_keys
+        api_settings.JWT_VERIFY_EXPIRATION = old_verify
+        auth.settings.KEY_CACHE = old_key_cache
 
     def test_jwt_decode_incorrectly_signed_payload(self):
         """Decode a JWT token: incorrectly signed payload.

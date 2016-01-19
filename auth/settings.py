@@ -144,6 +144,12 @@ AZURE_AD = {
     'CLIENT_ID': None,
     'CLIENT_SECRET': None,
     'TOKEN_URL': None,
-    'RESOURCE_URI': 'https://graph.windows.net',
-    'FEDERATION_METADATA': None,
+    'RESOURCE_URI': None,
+    'FEDERATION_METADATA': None
+}
+
+KEY_CACHE = {
+    'last_update': None,
+    'keys': [],
+    'expiry_seconds': 360,
 }

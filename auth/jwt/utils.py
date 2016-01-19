@@ -7,6 +7,7 @@ from rest_framework_jwt.settings import api_settings
 from cryptography.x509 import load_pem_x509_certificate
 from cryptography.hazmat.backends import default_backend
 import urllib.request
+import datetime
 
 import auth.settings
 
@@ -33,52 +34,94 @@ def jwt_decode_handler(token):
         'issuer': api_settings.JWT_ISSUER,
     }
 
-    if isinstance(api_settings.JWT_SECRET_KEY, dict):
-        keys = [api_settings.JWT_SECRET_KEY['SECRET_KEY']]
-
-        public_keys = []
-        public_key_source = api_settings.JWT_SECRET_KEY.get('PUBLIC_KEY')
-        if public_key_source is not None:
-            public_key_source_parts = public_key_source.rsplit('.', 1)
-            if globals().get(public_key_source_parts[1]):
-                public_keys = getattr(sys.modules[__name__],
-                                      public_key_source_parts[1])
+    for loop_counter in range(2):
+        if auth.settings.KEY_CACHE.get('last_update') is None:
+            if isinstance(api_settings.JWT_SECRET_KEY, dict):
+                keys = build_keys()
             else:
-                public_keys = getattr(import_module(public_key_source_parts[0]),
-                                      public_key_source_parts[1])
-            cert_kwargs = {
-                'file_certs': auth.settings.CERT_FILES,
-                'federation_meta_uri':
-                    auth.settings.AZURE_AD['FEDERATION_METADATA'],
-            }
-            keys.extend(public_keys(**cert_kwargs))
-    else:
-        keys = [api_settings.JWT_SECRET_KEY]
+                keys = [api_settings.JWT_SECRET_KEY]
+            auth.settings.KEY_CACHE['keys'].extend(keys)
+            auth.settings.KEY_CACHE['last_update'] = datetime.datetime.now()
 
         # Note: order is important here as our symmetric signed JWTs
         # do not have a "aud" claim.
-    decoded = None
-    secret_token_check = True
-    old_aud = api_settings.JWT_AUDIENCE
-    for key in keys:
-        if secret_token_check:
-            secret_token_check = False
-            kwargs['audience'] = None
-        kwargs['key'] = key
-        try:
-            decoded = jwt.decode(token, **kwargs)
-        except (ValueError,
-                TypeError,
-                jwt.exceptions.DecodeError,
-                jwt.exceptions.MissingRequiredClaimError) as err:
-            kwargs['audience'] = old_aud
-            continue
-        break
+        decoded = None
+        secret_token_check = True
+        old_aud = api_settings.JWT_AUDIENCE
+        for key in auth.settings.KEY_CACHE.get('keys'):
+            if secret_token_check:
+                secret_token_check = False
+                kwargs['audience'] = None
+
+            kwargs['key'] = key
+            try:
+                decoded = jwt.decode(token, **kwargs)
+                break
+            except (ValueError,
+                    TypeError,
+                    jwt.exceptions.DecodeError,
+                    jwt.exceptions.MissingRequiredClaimError) as err:
+                kwargs['audience'] = old_aud
+                continue
+
+        if loop_counter == 0 and decoded is None:
+            last_update = auth.settings.KEY_CACHE['last_update']
+            now = datetime.datetime.now()
+            gap = now - last_update
+            mins, secs = divmod(gap.days * 86400 + gap.seconds, 60)
+            seconds_passed = mins * 60 + secs
+
+            # Force refresh cache.
+            if seconds_passed > auth.settings.KEY_CACHE['expiry_seconds']:
+                auth.settings.KEY_CACHE['last_update'] = None
+        else:
+            break
 
     if decoded == None:
         raise jwt.exceptions.DecodeError('Signature verification failed')
 
     return decoded
+
+
+def build_keys():
+    """Cater for the overridden scenario where
+    :attr:`auth.settings.JWT_AUTH['JWT_SECRET_KEY'] is a
+    dictionary that supports both ``SECRET_KEY`` and
+    ``PUBLIC_KEY`` for combined symmetric and asymmetric signing.
+    For example::
+
+        JWT_AUTH = {
+            ...
+            'JWT_SECRET_KEY': {
+                'SECRET_KEY': SECRET_KEY,
+                'PUBLIC_KEY': 'auth.jwt.utils.source_certs',
+            },
+        }
+
+    In this case, both ``SECRET_KEY`` and ``PUBLIC_KEY`` values
+    will be combined into a single list.
+
+    """
+    keys = [api_settings.JWT_SECRET_KEY['SECRET_KEY']]
+
+    public_keys = []
+    public_key_source = api_settings.JWT_SECRET_KEY.get('PUBLIC_KEY')
+    if public_key_source is not None:
+        public_key_source_parts = public_key_source.rsplit('.', 1)
+        if globals().get(public_key_source_parts[1]):
+            public_keys = getattr(sys.modules[__name__],
+                                  public_key_source_parts[1])
+        else:
+            public_keys = getattr(import_module(public_key_source_parts[0]),
+                                  public_key_source_parts[1])
+        cert_kwargs = {
+            'file_certs': auth.settings.CERT_FILES,
+            'federation_meta_uri':
+                auth.settings.AZURE_AD['FEDERATION_METADATA'],
+        }
+        keys.extend(public_keys(**cert_kwargs))
+
+    return keys
 
 
 def jwt_encode_handler(payload):
